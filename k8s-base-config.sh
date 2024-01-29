@@ -6,6 +6,14 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
+# Get the IP address of the host
+host_ip=$(hostname -I | awk '{print $1}')
+
+# Add host IP and hostname to /etc/hosts if not already present
+if ! grep -q "$host_ip" /etc/hosts; then
+    echo "$host_ip $(hostname)" >> /etc/hosts
+fi
+
 # Check if Docker and Kubernetes are installed before uninstalling
 if command -v docker &>/dev/null && command -v kubectl &>/dev/null; then
     # Uninstall existing Docker and Kubernetes
