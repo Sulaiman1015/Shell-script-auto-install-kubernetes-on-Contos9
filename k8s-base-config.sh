@@ -6,40 +6,50 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-# Uninstall existing Docker and Kubernetes
-yum remove -y docker docker-ce docker-ce-cli containerd.io kubelet kubeadm kubectl
-if [ -e /etc/kubernetes/ ]; then
-    rm -rf /etc/kubernetes/
+# Check if Docker and Kubernetes are installed before uninstalling
+if command -v docker &>/dev/null && command -v kubectl &>/dev/null; then
+    # Uninstall existing Docker and Kubernetes
+    yum remove -y docker docker-ce docker-ce-cli containerd.io
+    yum remove -y kubeadm kubectl kubelet kubernetes-cni kube*
+
+    if [ -e /etc/kubernetes/ ]; then
+        rm -rf /etc/kubernetes/
+    fi
+
+    if [ -e /var/lib/kubelet/ ]; then
+        rm -rf /var/lib/kubelet/
+    fi
+
+    rm -rf /var/lib/etcd/ /var/lib/dockershim /var/run/kubernetes ~/.kube/
+    rm -f /etc/calico/calico.yaml /etc/calico/calico-config.yaml
 fi
 
-if [ -e /var/lib/kubelet/ ]; then
-    rm -rf /var/lib/kubelet/
-fi
+# Update the system
+yum update -y
 
-rm -rf /var/lib/etcd/ /var/lib/dockershim /var/run/kubernetes ~/.kube/
-rm -f /etc/calico/calico.yaml /etc/calico/calico-config.yaml
+echo "System is cleaned and updated."
 
 # Basic Kubernetes configuration
-sudo systemctl stop firewalld
-sudo systemctl disable firewalld
-sudo setenforce 0
-sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
-sudo swapoff -a
-sudo sed -i '/ swap /s/^\(.*\)$/#\1/g' /etc/fstab
-sudo modprobe overlay
-sudo modprobe br_netfilter
+systemctl stop firewalld
+systemctl disable firewalld
+setenforce 0
+sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+swapoff -a
+sed -i '/ swap /s/^\(.*\)$/#\1/g' /etc/fstab
+modprobe overlay
+modprobe br_netfilter
 
-cat <<EOF | sudo tee /etc/modules-load.d/containerd.conf
+cat <<EOF | tee /etc/modules-load.d/containerd.conf
 overlay
 br_netfilter
 EOF
 
-cat <<EOF | sudo tee /etc/sysctl.d/k8s.conf
+cat <<EOF | tee /etc/sysctl.d/k8s.conf
 net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 net.bridge.bridge-nf-call-ip6tables = 1
 EOF
-sudo sysctl --system
+sysctl --system
 
 cat > /etc/sysconfig/modules/ipvs.modules <<EOF
 #!/bin/bash 
@@ -50,17 +60,19 @@ modprobe -- ip_vs_sh
 modprobe -- nf_conntrack_ipv4 
 EOF
 
-chmod 755 /etc/sysconfig/modules/ipvs.modules && bash /etc/sysconfig/modules/ipvs.modules && lsmod | grep -e ip_vs -e nf_conntrack_ipv4
+chmod 755 /etc/sysconfig/modules/ipvs.modules && /etc/sysconfig/modules/ipvs.modules && lsmod | grep -e ip_vs -e nf_conntrack_ipv4
 
+# Install Docker
 yum install -y yum-utils
 yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-sudo yum install docker-ce docker-ce-cli containerd.io docker-compose-plugin
-containerd config default | sudo tee /etc/containerd/config.toml
+yum install -y docker-ce docker-ce-cli containerd.io
+containerd config default | tee /etc/containerd/config.toml
 sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml
-sudo systemctl start docker
-sudo systemctl enable docker
+systemctl start docker
+systemctl enable docker
 
-cat <<EOF | sudo tee /etc/yum.repos.d/kubernetes.repo
+# Install Kubernetes
+cat <<EOF | tee /etc/yum.repos.d/kubernetes.repo
 [kubernetes]
 name=Kubernetes
 baseurl=https://packages.cloud.google.com/yum/repos/kubernetes-el7-\$basearch
@@ -70,5 +82,5 @@ gpgkey=https://packages.cloud.google.com/yum/doc/rpm-package-key.gpg
 exclude=kubelet kubeadm kubectl
 EOF
 
-sudo yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
-sudo systemctl enable kubelet
+yum install -y kubelet kubeadm kubectl --disableexcludes=kubernetes
+systemctl enable kubelet
