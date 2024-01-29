@@ -7,9 +7,18 @@ exec > >(tee -a $LOG_FILE) 2>&1
 
 echo "Script started at: $(date)"
 
+# Get the IP address of the host
+HOST_IP=$(hostname -I | awk '{print $1}')
+
+# Add entry to /etc/hosts if not already present
+if ! grep -q "$HOST_IP" /etc/hosts; then
+    echo "$HOST_IP $(hostname)" | sudo tee -a /etc/hosts >/dev/null
+    echo "Added entry for $(hostname) with IP address $HOST_IP to /etc/hosts"
+fi
+
 # Initialize Kubernetes master node using kubeadm
 kubeadm init \
-    --apiserver-advertise-address=192.168.78.165 \
+    --apiserver-advertise-address=$HOST_IP \
     --service-cidr=10.96.0.0/16 \
     --pod-network-cidr=10.244.0.0/16
 
