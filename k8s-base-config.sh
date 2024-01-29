@@ -20,6 +20,10 @@ if command -v docker &>/dev/null && command -v kubectl &>/dev/null; then
         rm -rf /var/lib/kubelet/
     fi
 
+    if [ -e /etc/sysconfig/kubelet ]; then
+        rm -rf /etc/sysconfig/kubelet
+    fi
+
     rm -rf /var/lib/etcd/ /var/lib/dockershim /var/run/kubernetes ~/.kube/
     rm -f /etc/calico/calico.yaml /etc/calico/calico-config.yaml
 fi
